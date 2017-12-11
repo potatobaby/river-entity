@@ -184,4 +184,4 @@ def sort_river(filename,river_name):
 if __name__=='__main__':
     #generate_shp('H:\spatial entity\EXP_waterway\waterways.shp','澧水')
     sorted_river_coordinates = sort_river('H:\spatial entity\EXP_waterway\waterways.shp',
-                              '长江')  
+                              '澧水')  

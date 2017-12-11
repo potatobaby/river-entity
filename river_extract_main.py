@@ -17,12 +17,15 @@ import river_extract_coords
 
 def str_uni(a):
     str = a
-    uni = str.decode('gbk')
+    uni = str.decode('utf-8')
     return uni
 
 def uni_str(a):
-    uni = a
-    str = uni.encode('utf-8')
+    if a == None:
+        str = "null"
+    else:
+        uni = a
+        str = uni.encode('utf-8')
     return str
     
 
@@ -39,6 +42,9 @@ def generate_river_entitylist(table):
         transact_time = time.strftime("%d/%m/%Y")
         tag = []
         member = river_extract_restinfo.river_extract_member(row[0])
+        riverCode_dict = river_extract_restinfo.extract_riverCode()
+        member_riverCode = river_extract_restinfo.extract_member_riverCode(row[0],
+                                                                           riverCode_dict)
         belongs_to = uni_str(row[2])
         function = []
         rule = []
@@ -46,6 +52,7 @@ def generate_river_entitylist(table):
                               'H:\spatial entity\EXP_waterway\waterways.shp',
                               uni_str(row[0])) 
         cpoint,bbox,ghcode = river_extract_restinfo.adapt_ghash(coords)
+        river_len = river_extract_restinfo.length(coords)
         meta = dict(note=str_uni('null'),
                     precision=str_uni('null'),
                     produce_time=str_uni('null'),
@@ -54,8 +61,8 @@ def generate_river_entitylist(table):
         properties = dict(name=uni_str(row[0]),
                           type="river",
                           pinyin=pinyin.get(row[0], format='strip'),
-                          length="3km",
-                          classCode=row[1],
+                          length=repr(river_len)+"km",
+                          riverCode=row[1],
                           ghashCode=ghcode)
         relation = dict(flooded_area = str_uni('null'))
         geometry = dict(Type="MultiLine",
@@ -70,6 +77,7 @@ def generate_river_entitylist(table):
                                  transact_time=transact_time,
                                  tag=tag,
                                  member=member,
+                                 member_riverCode=member_riverCode,
                                  belongs_to=belongs_to,
                                  function=function,
                                  rule=rule,
@@ -92,33 +100,31 @@ if __name__ == '__main__':
     fifth_river_Filename = "fifth_river_entity.geojson"
 
     data = xlrd.open_workbook(exlFile)
-    first_river = data.sheet_by_name('first_grade')
-    second_river = data.sheet_by_name('second_grade')
-    third_river = data.sheet_by_name('third_grade')
-    fourth_river = data.sheet_by_name('fourth_grade')
+#    first_river = data.sheet_by_name('first_grade')
+#    second_river = data.sheet_by_name('second_grade')
+#    third_river = data.sheet_by_name('third_grade')
+#    fourth_river = data.sheet_by_name('fourth_grade')
     fifth_river = data.sheet_by_name('fifth_grade')
     
     
 #    first_river_entitylist = generate_river_entitylist(first_river)
-    second_river_entitylist = generate_river_entitylist(second_river)
-    third_river_entitylist = generate_river_entitylist(third_river)
-    fourth_river_entitylist = generate_river_entitylist(fourth_river)
+#    second_river_entitylist = generate_river_entitylist(second_river)
+#    third_river_entitylist = generate_river_entitylist(third_river)
+#    fourth_river_entitylist = generate_river_entitylist(fourth_river)
     fifth_river_entitylist = generate_river_entitylist(fifth_river)
-#    
- 
-
+  
 #    with open(first_river_Filename, 'w') as file_object:
 #        json.dump(first_river_entitylist, file_object, 
 #                    ensure_ascii=False, indent=4, separators=(',', ':'))
 #    with open(second_river_Filename, 'w') as file_object:
 #        json.dump(second_river_entitylist, file_object, 
 #                    ensure_ascii=False, indent=4, separators=(',', ':'))
-    with open(third_river_Filename, 'w') as file_object:
-        json.dump(third_river_entitylist, file_object, 
-                     ensure_ascii=False, indent=4, separators=(',', ':'))
-    with open(fourth_river_Filename, 'w') as file_object:
-        json.dump(fourth_river_entitylist, file_object, 
-                     ensure_ascii=False, indent=4, separators=(',', ':'))
+#    with open(third_river_Filename, 'w') as file_object:
+#        json.dump(third_river_entitylist, file_object, 
+#                     ensure_ascii=False, indent=4, separators=(',', ':'))
+#    with open(fourth_river_Filename, 'w') as file_object:
+#        json.dump(fourth_river_entitylist, file_object, 
+#                     ensure_ascii=False, indent=4, separators=(',', ':'))
     with open(fifth_river_Filename, 'w') as file_object:
         json.dump(fifth_river_entitylist, file_object, 
                      ensure_ascii=False, indent=4, separators=(',', ':'))
