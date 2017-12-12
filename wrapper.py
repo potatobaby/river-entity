@@ -18,15 +18,8 @@ import geojson
 def add_head(eFile):
 
     with open(eFile) as eObject:
-        single = geojson.load(eObject)
-        eList = single['features']
-
-    for entity in eList:
-        itemList = list(entity['statistics'].keys())
-        for item in itemList:
-            entity['properties'][item] = entity['statistics'][item]
-        del entity['statistics']
-    #     entity["type"] = "Feature"
+        eList = geojson.load(eObject)
+        
     newEntity = {
         "type": "FeatureCollection",
         "crs": {
@@ -48,13 +41,8 @@ def add_head(eFile):
 if __name__ == '__main__':
 
     # exlFile = sys.argv[1]
+    file_title = ["first","second","third","fourth","fifth"]
+    for i in range(len(file_title)):
+        filename = file_title[i]+"_river_entity.geojson"
+        add_head(filename)
 
-    worldFile = "world_entity.geojson"
-    provFile = "province_entity.geojson"
-    cityFile = "city_entity.geojson"
-    countyFile = "county_entity.geojson"
-
-    add_head(worldFile)
-    add_head(provFile)
-    add_head(cityFile)
-    add_head(countyFile)
