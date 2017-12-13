@@ -19,7 +19,7 @@ def add_head(eFile):
 
     with open(eFile) as eObject:
         eList = geojson.load(eObject)
-        
+              
     newEntity = {
         "type": "FeatureCollection",
         "crs": {
