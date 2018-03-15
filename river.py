@@ -9,17 +9,18 @@ Created on Mon Mar  5 16:54:07 2018
 import os
 import sys
 
-import numpy as np
 
 import shapely.geometry
 
-#from osgeo import ogr  
-#from osgeo import osr  
-#from osgeo import gdal
+from osgeo import ogr  
+from osgeo import osr  
+from osgeo import gdal
 
+import geohash_hilbert as ghh
+import math
 import geojson
 import json
-from rtree import index
+#from rtree import index
 
 import time
 import codecs
@@ -30,7 +31,7 @@ import codecs
 def river_object(river_file,shpFile):
     """把shp转为原始json文件,得到river段"""
     os.system('ogr2ogr -f GeoJSON -t_srs crs:84'+' '+river_file+' '+shpFile)
-    print('river_json file created')
+    print('Step1: river_json file created')
 
 
 def river_union(river_file,shpFile):
@@ -59,14 +60,14 @@ def river_union(river_file,shpFile):
                 properties = dict(NAME=name,
                             GBCODE=gjson['properties']['GBCODE'],
                             LENGTH=gjson['properties']['LENGTH'],
-#                            LEVEL=gjson['properties']['LEVEL'],
-#                            HYDNTG_ID=gjson['properties']['HYDNTG_ID'],
-#                            CLASS=gjson['properties']['CLASS'],
-#                            R_CODE=gjson['properties']['R_CODE'],
-#                            BASIN1=gjson['properties']['BASIN1'],
-#                            BASIN2=gjson['properties']['BASIN2'],
-#                            BRANCH=gjson['properties']['BRANCH'],
-#                            BRANCH2=gjson['properties']['BRANCH2'],
+                            LEVEL=gjson['properties']['LEVEL'],
+                            HYDNTG_ID=gjson['properties']['HYDNTG_ID'],
+                            CLASS=gjson['properties']['CLASS'],
+                            R_CODE=gjson['properties']['R_CODE'],
+                            BASIN1=gjson['properties']['BASIN1'],
+                            BASIN2=gjson['properties']['BASIN2'],
+                            BRANCH=gjson['properties']['BRANCH'],
+                            BRANCH2=gjson['properties']['BRANCH2'],
                             transact_time=time.strftime("%d/%m/%Y"),
                             valid_time=time.strftime("%d/%m/%Y"))
                 
@@ -92,56 +93,109 @@ def river_union(river_file,shpFile):
                 origin = rDict[name]['geometry']
                 rDict[name]['geometry'] = origin.union(shape)
      
-    print('{0:d} original river entities.'.format(i))          
-    print('{0:d} river entities.'.format(len(rDict)))     
-    return rDict
+#    print('{0:d} original river entities.'.format(i))          
+#    print('{0:d} river entities.'.format(len(rDict))) 
+    print('Step2: union finished')
+    eList = list(rDict.values())    
+    return eList
 
-def item_build(eDict):
-    for (name, entity) in eDict.items():
-        sid = entity['sid']
-        geom = shapely.geometry.asShape(entity['geometry'])
-        bbox = geom.bounds
-        yield (sid, bbox, (name, entity))
+def river_union2(river_file,shpFile):
+    """将原始json文件按名称合并，得到river1_3级实体"""
+    #输入生成原始json文件名称
+    river_object(river_file,shpFile)
+    
+    with codecs.open(river_file, "r",encoding='gbk', errors='ignore') as jsonObject:
+        gjsonList = json.load(jsonObject)
+        
+    nameList = []
+    rDict = {}
+    i=0
+    for gjson in gjsonList['features']:
+        i=i+1
+        name = gjson['properties']['NAME']
+        #对每个河流段判断是新的
+        if name is not None:
+            shape = shapely.geometry.asShape(gjson['geometry'])
+            if name not in nameList:
+                nameList.append(name)
+                
+                #geometry,properties,relation, meta四大类
+                geometry = shape
+                
+                properties = dict(NAME=name,
+                            GBCODE=gjson['properties']['GBCODE'],
+                            LENGTH=gjson['properties']['LENGTH'],
+                            transact_time=time.strftime("%d/%m/%Y"),
+                            valid_time=time.strftime("%d/%m/%Y"))
+                
+                relation = dict(Member='null')
+                
+                                
+                meta = dict(note='null',
+                            precision='null',
+                            produce_time='null',
+                            producer='null',
+                            security_level='null')
+                
+                rDict[name] = dict(UUID='null',
+                                   geometry=geometry,
+                                   properties=properties,
+                                   relation=relation,
+                                   meta=meta)
 
-def intersect_judge(eDict):
+            else:
+                #河流段的长度加起来
+                rDict[name]['properties']['LENGTH']+=gjson['properties']['LENGTH']
+                #河流段的坐标合并
+                origin = rDict[name]['geometry']
+                rDict[name]['geometry'] = origin.union(shape)
+     
+#    print('{0:d} original river entities.'.format(i))          
+#    print('{0:d} river entities.'.format(len(rDict)))   
+    print('Step2: union finished')
+    eList = list(rDict.values())    
+    return eList
 
-    sidDict = {}
-    for (name, entity) in eDict.items():
-        feature = geojson.Feature(geometry=entity['geometry'])
-        eDict[name]['geometry'] = feature['geometry']
-        sid = entity['sid']
-        sidDict[sid] = eDict[name]
+def encode(eList):
+    """计算出将每条河流的唯一标示UUID"""
+    classCode = 160201
+    for i in range(len(eList)):
+         geom = shapely.geometry.asShape(eList[i]['geometry'])
+         cpoint = geom.centroid
+         bbox = geom.bounds  
+         edgeLen = max(bbox[2] - bbox[0], bbox[3] - bbox[1])
+         level = int(math.ceil(math.log2(360 / edgeLen) * 2 / 5))
+         if level <= 0:
+             level = 1
+         #计算geohashcode
+         ghcode = ghh.encode(cpoint.x, cpoint.y, level)
+         #唯一标识 UUID=类别码+位置码+顺序码
+         UUID = str(classCode) + ghcode + "00" 
+         eList[i]['UUID']= UUID
+    print('Step3: encoding finished')
+    print('')
+    return eList
+    
+    
 
-    idxP = index.Property()
-    idxP.filename = 'river_index'
-    idxP.overwrite = True
-    idxP.storage = index.RT_Disk
-    idxP.dimension = 2
-    idx = index.Index(idxP.filename,
-                      item_build(eDict),
-                      properties=idxP,
-                      interleaved=True,
-                      overwrite=True)
-
-    linkNum = 0
-    for (currentName, currentEntity) in eDict.items():
-        # if linkNum % 8192 == 0:
-        #     print(linkNum)
-        currentGeom = shapely.geometry.asShape(currentEntity['geometry'])
-        currentQueryBox = currentGeom.bounds
-        judgeIds = list(idx.intersection(currentQueryBox))
-        for jid in judgeIds:
-            judgeEntity = sidDict[jid]
-            judgeGeom = shapely.geometry.asShape(judgeEntity['geometry'])
-            if currentGeom.intersects(judgeGeom):
-                jName = judgeEntity['properties']['NAME']
-                if jName != currentName and jName not in eDict[currentName]['intersects']:
-                    eDict[currentName]['intersects'].append(jName)
-                    eDict[jName]['intersects'].append(currentName)
-                    linkNum += 1
-
-    print('{0:d} road intersection links'.format(linkNum))
-    return list(eDict.values())
+def extract_tributary(eList1,eList2):  
+  #将上一级每条河流和下一级每条河流求交，求出支流信息  
+    for i in range(len(eList1)):
+        member = []
+        for j in range(len(eList2)):
+            r1_geo=shapely.geometry.asShape(eList1[i]['geometry'])
+            r1_geo_bbox = box(r1_geo.bounds[0],r1_geo.bounds[1],
+                              r1_geo.bounds[2],r1_geo.bounds[3]) 
+            r2_geo=shapely.geometry.asShape(eList2[j]['geometry'])
+            r2_geo_bbox = box(r2_geo.bounds[0],r2_geo.bounds[1],
+                              r2_geo.bounds[2],r2_geo.bounds[3])
+            if r1_geo_bbox.intersects(r2_geo_bbox):
+                if r1_geo.intersects(r2_geo):
+                    member.append(eList2[j]['properties']['NAME'])
+        eList1[i]['relation']['Member'] = member 
+        
+    return eList1
+                
 
 
 if __name__ == '__main__':
@@ -151,22 +205,45 @@ if __name__ == '__main__':
     os.chdir('/Users/gongqi/Documents/Research/river_exp/data')
     print(os.getcwd())
     
-    #选择文件
-    for file_title in ['River5_polyline','River4_polyline','River1_3_polyline']:
-        shpFile = file_title+'.shp'
-        print(shpFile)
-        river_file = file_title+'_object.json' 
-        eDict=river_union(river_file,shpFile)
-#        eList = intersect_judge(eDict)
-#        eList = list(eDict.values())
-        entityFile=file_title+'_entity.geojson'
+    #选择文件5级河流
+    file_title = 'River5_polyline'
+    shpFile = file_title+'.shp'
+    print(shpFile)
+    river_file = file_title+'_object.json' 
+    eList5 = river_union(river_file,shpFile)
+    eList5 = encode(eList5)
+               
+   #选择4级河流
+    file_title = 'River4_polyline'
+    shpFile = file_title+'.shp'
+    print(shpFile)
+    river_file = file_title+'_object.json' 
+    eList4 = river_union(river_file,shpFile)
+    eList4 = encode(eList4)
+#    eList4 = extract_member(eList4,eList5)      
+            
+    #选择3级河流
+    file_title = 'River1_3_polyline'
+    shpFile = file_title+'.shp'
+    print(shpFile)
+    river_file = file_title+'_object.json' 
+    eList1=river_union2(river_file,shpFile)
+    eList1 = encode(eList1)
+#    eList1 = extract_member(eList1,eList4)  
+    
+    
+    
+    file_titles = ['River1_3_polyline','River4_polyline','River5_polyline']
+    eLists = [eList1,eList4,eList5]  
+    for i in range(len(eLists)):
+        entityFile=file_titles[i]+'_entity.geojson'
         Entity = {
         "type": "FeatureCollection",
         "crs": {
             "type": "name",
             "properties": {
                 "name": "urn:ogc:def:crs:OGC:1.3:CRS84"}},
-        "features": eDict}
+        "features": eLists[i]}
         with open(entityFile, 'w') as output:
             geojson.dump(
                     Entity,
@@ -174,7 +251,9 @@ if __name__ == '__main__':
                     ensure_ascii=False,
                     indent=4,
                     separators=(',', ':'))
-        
+    
+    print('All river entity files created')
+            
     end = time.time()
     print(end-start, 'ms')
     
