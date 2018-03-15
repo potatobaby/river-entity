@@ -8,7 +8,8 @@ Created on Mon Mar  5 16:54:07 2018
 """
 import os
 import sys
-
+import sys
+sys.getdefaultencoding() 
 
 import shapely.geometry
 
@@ -200,7 +201,6 @@ def extract_tributary(eList1,eList2):
                       overwrite=True)
 
     linkNum = 0
-    j=0
     for currentEntity in eList1:
         currentGeom = shapely.geometry.asShape(currentEntity['geometry'])
         currentQueryBox = currentGeom.bounds   #对上一级河流求bbox
@@ -210,10 +210,9 @@ def extract_tributary(eList1,eList2):
             judgeGeom = shapely.geometry.asShape(judgeEntity['geometry'])
             if currentGeom.intersects(judgeGeom):
                 jName = judgeEntity['properties']['NAME']
-                if jName not in eList1[i]['relation']['Tributary']:
-                    eList1[j]['relation']['Tributary'].append(jName)
+                if jName not in currentEntity['relation']['Tributary']:
+                    currentEntity['relation']['Tributary'].append(jName)
                     linkNum += 1
-        j += 1
   
     
     print('Step4: extracting relations finished')
