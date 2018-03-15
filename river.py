@@ -20,7 +20,7 @@ import geohash_hilbert as ghh
 import math
 import geojson
 import json
-#from rtree import index
+from rtree import index
 
 import time
 import codecs
@@ -71,7 +71,7 @@ def river_union(river_file,shpFile):
                             transact_time=time.strftime("%d/%m/%Y"),
                             valid_time=time.strftime("%d/%m/%Y"))
                 
-                relation = dict(Member='null')
+                relation = dict(Tributary=[])
                 
                                 
                 meta = dict(note='null',
@@ -80,7 +80,7 @@ def river_union(river_file,shpFile):
                             producer='null',
                             security_level='null')
                 
-                rDict[name] = dict(sid=gjson['properties']['GBCODE'],
+                rDict[name] = dict(UUID='null',
                                    geometry=geometry,
                                    properties=properties,
                                    relation=relation,
@@ -128,7 +128,7 @@ def river_union2(river_file,shpFile):
                             transact_time=time.strftime("%d/%m/%Y"),
                             valid_time=time.strftime("%d/%m/%Y"))
                 
-                relation = dict(Member='null')
+                relation = dict(Tributary=[])
                 
                                 
                 meta = dict(note='null',
@@ -173,27 +173,50 @@ def encode(eList):
          UUID = str(classCode) + ghcode + "00" 
          eList[i]['UUID']= UUID
     print('Step3: encoding finished')
-    print('')
     return eList
     
-    
+def item_build(eList):
+    i = 0
+    for entity in eList:
+        sid = i
+        geom = shapely.geometry.asShape(entity['geometry'])
+        bbox = geom.bounds
+        i = i+1
+        yield (sid, bbox, entity)    
+
 
 def extract_tributary(eList1,eList2):  
-  #将上一级每条河流和下一级每条河流求交，求出支流信息  
-    for i in range(len(eList1)):
-        member = []
-        for j in range(len(eList2)):
-            r1_geo=shapely.geometry.asShape(eList1[i]['geometry'])
-            r1_geo_bbox = box(r1_geo.bounds[0],r1_geo.bounds[1],
-                              r1_geo.bounds[2],r1_geo.bounds[3]) 
-            r2_geo=shapely.geometry.asShape(eList2[j]['geometry'])
-            r2_geo_bbox = box(r2_geo.bounds[0],r2_geo.bounds[1],
-                              r2_geo.bounds[2],r2_geo.bounds[3])
-            if r1_geo_bbox.intersects(r2_geo_bbox):
-                if r1_geo.intersects(r2_geo):
-                    member.append(eList2[j]['properties']['NAME'])
-        eList1[i]['relation']['Member'] = member 
-        
+    """将上一级每条河流和下一级每条河流求交，求出支流信息"""
+    #建立索引
+    idxP = index.Property()
+    idxP.filename = 'road_index'
+    idxP.overwrite = True
+    idxP.storage = index.RT_Disk
+    idxP.dimension = 2
+    idx = index.Index(idxP.filename,
+                      item_build(eList2),
+                      properties=idxP,
+                      interleaved=True,
+                      overwrite=True)
+
+    linkNum = 0
+    j=0
+    for currentEntity in eList1:
+        currentGeom = shapely.geometry.asShape(currentEntity['geometry'])
+        currentQueryBox = currentGeom.bounds   #对上一级河流求bbox
+        judgeIds = list(idx.intersection(currentQueryBox))#求出相交的下一级河流
+        for jid in judgeIds:
+            judgeEntity = eList2[jid]
+            judgeGeom = shapely.geometry.asShape(judgeEntity['geometry'])
+            if currentGeom.intersects(judgeGeom):
+                jName = judgeEntity['properties']['NAME']
+                if jName not in eList1[i]['relation']['Tributary']:
+                    eList1[j]['relation']['Tributary'].append(jName)
+                    linkNum += 1
+        j += 1
+  
+    
+    print('Step4: extracting relations finished')
     return eList1
                 
 
@@ -206,6 +229,7 @@ if __name__ == '__main__':
     print(os.getcwd())
     
     #选择文件5级河流
+    print('')
     file_title = 'River5_polyline'
     shpFile = file_title+'.shp'
     print(shpFile)
@@ -214,22 +238,24 @@ if __name__ == '__main__':
     eList5 = encode(eList5)
                
    #选择4级河流
+    print('')
     file_title = 'River4_polyline'
     shpFile = file_title+'.shp'
     print(shpFile)
     river_file = file_title+'_object.json' 
     eList4 = river_union(river_file,shpFile)
     eList4 = encode(eList4)
-#    eList4 = extract_member(eList4,eList5)      
+    eList4 = extract_tributary(eList4,eList5)      
             
     #选择3级河流
+    print('')
     file_title = 'River1_3_polyline'
     shpFile = file_title+'.shp'
     print(shpFile)
     river_file = file_title+'_object.json' 
     eList1=river_union2(river_file,shpFile)
     eList1 = encode(eList1)
-#    eList1 = extract_member(eList1,eList4)  
+    eList1 = extract_tributary(eList1,eList4)  
     
     
     
