@@ -59,6 +59,7 @@ def river_union(river_file,shpFile):
                 geometry = shape
                 
                 properties = dict(NAME=name,
+                            UUID='null',
                             GBCODE=gjson['properties']['GBCODE'],
                             LENGTH=gjson['properties']['LENGTH'],
                             LEVEL=gjson['properties']['LEVEL'],
@@ -70,7 +71,9 @@ def river_union(river_file,shpFile):
                             BRANCH=gjson['properties']['BRANCH'],
                             BRANCH2=gjson['properties']['BRANCH2'],
                             transact_time=time.strftime("%d/%m/%Y"),
-                            valid_time=time.strftime("%d/%m/%Y"))
+                            valid_time=time.strftime("%d/%m/%Y"),
+                            Tributary_NAME=[],
+                            Tributary=[])
                 
                 relation = dict(Tributary=[])
                 
@@ -81,7 +84,7 @@ def river_union(river_file,shpFile):
                             producer='null',
                             security_level='null')
                 
-                rDict[name] = dict(UUID='null',
+                rDict[name] = dict(type="Feature",
                                    geometry=geometry,
                                    properties=properties,
                                    relation=relation,
@@ -105,7 +108,7 @@ def river_union2(river_file,shpFile):
     #输入生成原始json文件名称
     river_object(river_file,shpFile)
     
-    with codecs.open(river_file, "r",encoding='gbk', errors='ignore') as jsonObject:
+    with codecs.open(river_file, "r",encoding='utf-8', errors='ignore') as jsonObject:
         gjsonList = json.load(jsonObject)
         
     nameList = []
@@ -124,10 +127,14 @@ def river_union2(river_file,shpFile):
                 geometry = shape
                 
                 properties = dict(NAME=name,
+                            UUID='null',
                             GBCODE=gjson['properties']['GBCODE'],
                             LENGTH=gjson['properties']['LENGTH'],
+                            LEVEL=gjson['properties']['LEVEL_RIVE'],
                             transact_time=time.strftime("%d/%m/%Y"),
-                            valid_time=time.strftime("%d/%m/%Y"))
+                            valid_time=time.strftime("%d/%m/%Y"),
+                            Tributary_NAME=[],
+                            Tributary=[])
                 
                 relation = dict(Tributary=[])
                 
@@ -138,7 +145,7 @@ def river_union2(river_file,shpFile):
                             producer='null',
                             security_level='null')
                 
-                rDict[name] = dict(UUID='null',
+                rDict[name] = dict(type="Feature",
                                    geometry=geometry,
                                    properties=properties,
                                    relation=relation,
@@ -172,7 +179,7 @@ def encode(eList):
          ghcode = ghh.encode(cpoint.x, cpoint.y, level)
          #唯一标识 UUID=类别码+位置码+顺序码
          UUID = str(classCode) + ghcode + "00" 
-         eList[i]['UUID']= UUID
+         eList[i]['properties']['UUID']=UUID
     print('Step3: encoding finished')
     return eList
     
@@ -200,19 +207,26 @@ def extract_tributary(eList1,eList2):
                       interleaved=True,
                       overwrite=True)
 
-    linkNum = 0
+#    linkNum = 0
     for currentEntity in eList1:
         currentGeom = shapely.geometry.asShape(currentEntity['geometry'])
         currentQueryBox = currentGeom.bounds   #对上一级河流求bbox
+        currentID = currentEntity['properties']['UUID']
+        currentLevel = currentEntity['properties']['LEVEL']
+        currentBuffer = currentGeom.buffer(0.2)
         judgeIds = list(idx.intersection(currentQueryBox))#求出相交的下一级河流
         for jid in judgeIds:
             judgeEntity = eList2[jid]
             judgeGeom = shapely.geometry.asShape(judgeEntity['geometry'])
-            if currentGeom.intersects(judgeGeom):
-                jName = judgeEntity['properties']['NAME']
-                if jName not in currentEntity['relation']['Tributary']:
-                    currentEntity['relation']['Tributary'].append(jName)
-                    linkNum += 1
+            if currentBuffer.intersects(judgeGeom):
+                jID = judgeEntity['properties']['UUID']
+                jLevel= judgeEntity['properties']['LEVEL']
+                jNAME = judgeEntity['properties']['NAME']
+                if jID != currentID and jID not in currentEntity['relation']['Tributary'] and jLevel>currentLevel:
+                    currentEntity['relation']['Tributary'].append(jID)
+                    currentEntity['properties']['Tributary'].append(jID)
+                    currentEntity['properties']['Tributary_NAME'].append(jNAME)                   
+#                    linkNum += 1
   
     
     print('Step4: extracting relations finished')
@@ -254,14 +268,16 @@ if __name__ == '__main__':
     river_file = file_title+'_object.json' 
     eList1=river_union2(river_file,shpFile)
     eList1 = encode(eList1)
-    eList1 = extract_tributary(eList1,eList4)  
+    eList1 = extract_tributary(eList1,eList1)
+    eList1 = extract_tributary(eList1,eList4) 
+    eList1 = extract_tributary(eList1,eList5) 
     
     
     
     file_titles = ['River1_3_polyline','River4_polyline','River5_polyline']
     eLists = [eList1,eList4,eList5]  
     for i in range(len(eLists)):
-        entityFile=file_titles[i]+'_entity.geojson'
+        entityFile='../output/'+file_titles[i]+'_entity.geojson'
         Entity = {
         "type": "FeatureCollection",
         "crs": {
